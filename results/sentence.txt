@@ -1,0 +1,1 @@
+(ROOT (S (NP (Det the) (Noun pickle)) (VP (Verb ate) (NP (NP (Det the) (Noun floor)) (PP (Prep with) (NP (Det the) (Noun pickle)))))) .)
