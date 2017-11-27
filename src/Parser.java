@@ -2,12 +2,26 @@
  * Parser based on the CYK algorithm.
  */
 
+import javafx.util.Pair;
+
 import java.io.*;
 import java.util.*;
 
 public class Parser {
 
+
+	class Pair {
+		String left_Rule_Key;  //Key of rule from left
+		String down_Rule_Key;  //Key of rule from down
+		int[] left_back;
+		int[] down_back;
+		double pair_prob;
+		boolean isTerminal;
+	}
+
 	public Grammar g;
+
+	public HashMap<String, Pair> square[][];
 
 	/**
 	 * Constructor: read the grammar.
@@ -20,12 +34,100 @@ public class Parser {
 	 * Parse one sentence given in the array.
 	 */
 	public void parse(ArrayList<String> sentence) {
+
+		//init the square using HashMap. So the value such as NP->NP NP, NP-> N
+		// can be store in the map which contain the larger pair_prob.
+		square = new HashMap[sentence.size()][sentence.size()];
+		for(int i = 0; i < sentence.size(); ++i){
+			for(int j = i; j < sentence.size(); ++j){
+				square[i][j] = new HashMap<String, Pair>();
+			}
+		}
+
+		for(int i = 0; i < sentence.size(); ++i){
+			//Step 1 : All A| A->words[j], init in table
+			String word = sentence.get(i);   //e.g. fish
+			List<String> pre_Term = g.findPreTerminals(word); //e.g N-> fish,  X-> fish, normally it only have one?
+			for(String LHS : pre_Term){
+				List<RHS> RHSes = g.findProductions(LHS);
+				for(RHS RHS : RHSes){
+					if(RHS.equals(word)){
+						Pair pair = new Pair();
+						pair.isTerminal = true;
+						pair.left_Rule_Key = word;
+						pair.pair_prob = RHS.getProb();
+						square[i][i].put(LHS, pair);
+					}
+				}
+			}
+		}
+
+		//step 2 handle unaries from NLP book
+		for(int j = 0; j < sentence.size(); ++j){
+			for(int i = j - 1; i >= 0; --i){
+				for(int k = i; k < j; ++j){
+
+					HashMap<String, Pair> hash_left = square[i][k];
+					HashMap<String, Pair> hash_down = square[k + 1][j];
+
+					//use RHS search for LHS
+					for(String left_Rules_Key : hash_left.keySet()){
+						for(String down_Rules_Key : hash_down.keySet()){
+							Pair left_Rule = hash_left.get(left_Rules_Key);
+							Pair down_Rule = hash_down.get(down_Rules_Key);
+
+							//given the RHS string (such as "VP NP")
+							String rhsStr = left_Rules_Key + " " + down_Rules_Key;
+							if(g.findLHS(rhsStr) == null) continue;
+							for(String LHS : g.findLHS(rhsStr)){  //VP -> V NP get VP based on "V NP" and others.
+								for(RHS RHS : g.findProductions(LHS)){
+									//RHS.printProduction();
+									String ruleTest = RHS.first()+RHS.second();
+									if(ruleTest.equals(rhsStr)) {
+										//find match!
+										Pair curr_Pair = new Pair();
+										curr_Pair.left_Rule_Key = left_Rules_Key;
+										curr_Pair.down_Rule_Key = down_Rules_Key;
+										curr_Pair.left_back = new int[]{i, k};
+										curr_Pair.down_back = new int[]{k+1, j};
+										curr_Pair.pair_prob = RHS.getProb() * left_Rule.pair_prob * down_Rule.pair_prob;
+
+										//put in to square hash
+										if(!square[i][j].containsKey(curr_Pair) || square[i][j].get(LHS).pair_prob < curr_Pair.pair_prob){
+											square[i][j].put(LHS, curr_Pair);
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
 	}
 
 	/**
 	 * Print the parse obtained after calling parse()
 	 */
-	public String PrintOneParse() {
+	public String PrintOneParse(int len) {
+		int index = len - 1;
+		int[] start_position = new int[]{index, index};
+
+		System.out.println(DFS("S", start_position));
+		return DFS("S", start_position);
+	}
+
+
+	private String DFS(String LHS, int[] back_trace){
+		int i = back_trace[0];
+		int j = back_trace[1];
+		Pair RHS = square[i][j].get(LHS);
+		if(RHS.down_Rule_Key == null){
+			return " (" + LHS + " " + RHS.left_Rule_Key + ")";
+		}
+		else {
+			return " (" + LHS + DFS(RHS.left_Rule_Key, RHS.left_back) + DFS(RHS.down_Rule_Key, RHS.down_back) + ")";
+		}
 	}
 
 
@@ -62,7 +164,9 @@ public class Parser {
 						}
 					}
 					parser.parse(sentence);
-					System.out.println("(ROOT " + parser.PrintOneParse() + " " + ")");
+
+					int len = sentence.size();
+					System.out.println("(ROOT " + parser.PrintOneParse(len) + " " + ")"); //tmp delete end
 					//System.out.println("(ROOT " + parser.PrintOneParse() + " " + end + ")");
 
 				}
